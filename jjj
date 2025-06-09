@@ -1,0 +1,52 @@
+-- LocalScript в StarterPlayerScripts
+local FluentUI = require(game:GetService("ReplicatedStorage"):WaitForChild("FluentUI"))
+
+-- Создаем экран
+local screenGui = Instance.new("ScreenGui")
+screenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+
+-- Контейнер для элементов
+local container = Instance.new("Frame")
+container.BackgroundTransparency = 1
+container.Size = UDim2.new(0.3, 0, 1, 0)
+container.Position = UDim2.new(0.35, 0, 0, 0)
+container.Parent = screenGui
+
+local layout = Instance.new("UIListLayout")
+layout.Padding = UDim.new(0, 10)
+layout.Parent = container
+
+-- Создаем несколько переключателей
+local toggle1 = FluentUI.CreateToggle({
+    label = "Авиарежим",
+    description = "Отключение всех беспроводных соединений",
+    checked = false,
+    size = "medium",
+    onChange = function(value)
+        print("Авиарежим:", value and "включен" or "выключен")
+    end
+})
+toggle1.Parent = container
+
+local toggle2 = FluentUI.CreateToggle({
+    label = "Тёмная тема",
+    description = "Включение темного оформления интерфейса",
+    checked = true,
+    size = "large"
+})
+toggle2.Parent = container
+
+local toggle3 = FluentUI.CreateToggle({
+    label = "Уведомления",
+    checked = false,
+    size = "small",
+    onChange = function(value)
+        print("Уведомления:", value and "вкл" or "выкл")
+    end
+})
+toggle3.Parent = container
+
+-- Программное изменение состояния
+wait(3)
+toggle1:SetChecked(true)
+toggle2:SetDisabled(true)
