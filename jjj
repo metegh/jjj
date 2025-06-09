@@ -1,52 +1,259 @@
--- LocalScript в StarterPlayerScripts
-local FluentUI = require(game:GetService("ReplicatedStorage"):WaitForChild("FluentUI"))
+-- ModuleScript: FluentUI
+local FluentUI = {}
 
--- Создаем экран
-local screenGui = Instance.new("ScreenGui")
-screenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+-- Цветовая палитра Fluent Design
+local colors = {
+    primary = Color3.fromRGB(0, 120, 212),
+    primaryHover = Color3.fromRGB(16, 110, 190),
+    disabled = Color3.fromRGB(243, 242, 241),
+    background = Color3.fromRGB(255, 255, 255),
+    text = Color3.fromRGB(0, 0, 0),
+    disabledText = Color3.fromRGB(161, 159, 157),
+    hoverLight = Color3.fromRGB(225, 225, 225)
+}
 
--- Контейнер для элементов
-local container = Instance.new("Frame")
-container.BackgroundTransparency = 1
-container.Size = UDim2.new(0.3, 0, 1, 0)
-container.Position = UDim2.new(0.35, 0, 0, 0)
-container.Parent = screenGui
-
-local layout = Instance.new("UIListLayout")
-layout.Padding = UDim.new(0, 10)
-layout.Parent = container
-
--- Создаем несколько переключателей
-local toggle1 = FluentUI.CreateToggle({
-    label = "Авиарежим",
-    description = "Отключение всех беспроводных соединений",
-    checked = false,
-    size = "medium",
-    onChange = function(value)
-        print("Авиарежим:", value and "включен" or "выключен")
+-- Создание переключателя (Toggle)
+function FluentUI.CreateToggle(options)
+    -- Настройки по умолчанию
+    options = options or {}
+    local defaultOptions = {
+        label = "Toggle",
+        description = "",
+        checked = false,
+        disabled = false,
+        size = "medium", -- small, medium, large
+        onChange = nil
+    }
+    
+    for k, v in pairs(defaultOptions) do
+        if options[k] == nil then
+            options[k] = v
+        end
     end
-})
-toggle1.Parent = container
 
-local toggle2 = FluentUI.CreateToggle({
-    label = "Тёмная тема",
-    description = "Включение темного оформления интерфейса",
-    checked = true,
-    size = "large"
-})
-toggle2.Parent = container
+    -- Размеры в зависимости от типа
+    local sizes = {
+        small = {
+            height = 32,
+            toggleWidth = 32,
+            toggleHeight = 16,
+            thumbSize = 12,
+            textSize = 14,
+            descTextSize = 12
+        },
+        medium = {
+            height = 40,
+            toggleWidth = 40,
+            toggleHeight = 20,
+            thumbSize = 16,
+            textSize = 16,
+            descTextSize = 14
+        },
+        large = {
+            height = 60,
+            toggleWidth = 48,
+            toggleHeight = 24,
+            thumbSize = 20,
+            textSize = 18,
+            descTextSize = 15
+        }
+    }
+    
+    local sizeSettings = sizes[options.size] or sizes.medium
 
-local toggle3 = FluentUI.CreateToggle({
-    label = "Уведомления",
-    checked = false,
-    size = "small",
-    onChange = function(value)
-        print("Уведомления:", value and "вкл" or "выкл")
+    -- Основной контейнер
+    local container = Instance.new("Frame")
+    container.BackgroundTransparency = 1
+    container.Size = UDim2.new(1, 0, 0, sizeSettings.height)
+    container.Name = "FluentToggle"
+    
+    -- Кнопка для взаимодействия
+    local toggleButton = Instance.new("TextButton")
+    toggleButton.BackgroundTransparency = 1
+    toggleButton.Size = UDim2.new(1, 0, 1, 0)
+    toggleButton.Text = ""
+    toggleButton.AutoButtonColor = false
+    toggleButton.Parent = container
+    
+    -- Фон переключателя
+    local toggleFrame = Instance.new("Frame")
+    toggleFrame.Size = UDim2.new(0, sizeSettings.toggleWidth, 0, sizeSettings.toggleHeight)
+    toggleFrame.Position = UDim2.new(1, -sizeSettings.toggleWidth, 0.5, -sizeSettings.toggleHeight/2)
+    toggleFrame.AnchorPoint = Vector2.new(1, 0.5)
+    toggleFrame.BackgroundColor3 = options.checked and colors.primary or colors.disabled
+    toggleFrame.BorderSizePixel = 0
+    toggleFrame.Name = "ToggleFrame"
+    toggleFrame.Parent = container
+
+    -- Кнопка переключателя
+    local toggleThumb = Instance.new("Frame")
+    toggleThumb.Size = UDim2.new(0, sizeSettings.thumbSize, 0, sizeSettings.thumbSize)
+    toggleThumb.Position = options.checked and UDim2.new(1, -sizeSettings.thumbSize-2, 0.5, -sizeSettings.thumbSize/2) 
+                          or UDim2.new(0, 2, 0.5, -sizeSettings.thumbSize/2)
+    toggleThumb.AnchorPoint = Vector2.new(0, 0.5)
+    toggleThumb.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    toggleThumb.BorderSizePixel = 0
+    toggleThumb.Name = "ToggleThumb"
+    toggleThumb.Parent = toggleFrame
+
+    -- Закругленные углы
+    local thumbCorner = Instance.new("UICorner")
+    thumbCorner.CornerRadius = UDim.new(1, 0)
+    thumbCorner.Parent = toggleThumb
+
+    local frameCorner = Instance.new("UICorner")
+    frameCorner.CornerRadius = UDim.new(1, 0)
+    frameCorner.Parent = toggleFrame
+
+    -- Текстовая часть
+    local textContainer = Instance.new("Frame")
+    textContainer.BackgroundTransparency = 1
+    textContainer.Size = UDim2.new(1, -sizeSettings.toggleWidth-10, 1, 0)
+    textContainer.Position = UDim2.new(0, 0, 0, 0)
+    textContainer.Parent = container
+
+    -- Заголовок
+    local label = Instance.new("TextLabel")
+    label.Text = options.label
+    label.Font = Enum.Font.SourceSansSemibold
+    label.TextSize = sizeSettings.textSize
+    label.TextColor3 = colors.text
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.BackgroundTransparency = 1
+    label.Size = options.description == "" and UDim2.new(1, 0, 1, 0) or UDim2.new(1, 0, 0.6, 0)
+    label.Position = UDim2.new(0, 0, 0, 0)
+    label.Parent = textContainer
+
+    -- Описание (если есть)
+    local description
+    if options.description ~= "" then
+        description = Instance.new("TextLabel")
+        description.Text = options.description
+        description.Font = Enum.Font.SourceSans
+        description.TextSize = sizeSettings.descTextSize
+        description.TextColor3 = colors.text
+        description.TextTransparency = 0.3
+        description.TextXAlignment = Enum.TextXAlignment.Left
+        description.BackgroundTransparency = 1
+        description.Size = UDim2.new(1, 0, 0.4, 0)
+        description.Position = UDim2.new(0, 0, 0.6, 0)
+        description.Parent = textContainer
     end
-})
-toggle3.Parent = container
 
--- Программное изменение состояния
-wait(3)
-toggle1:SetChecked(true)
-toggle2:SetDisabled(true)
+    -- Состояние переключателя
+    local state = {
+        checked = options.checked,
+        disabled = options.disabled
+    }
+
+    -- Сервис для анимаций
+    local tweenService = game:GetService("TweenService")
+
+    -- Обновление визуального состояния
+    local function updateToggle()
+        local thumbGoal = {
+            Position = state.checked and UDim2.new(1, -sizeSettings.thumbSize-2, 0.5, -sizeSettings.thumbSize/2) 
+                       or UDim2.new(0, 2, 0.5, -sizeSettings.thumbSize/2)
+        }
+        
+        local frameGoal = {
+            BackgroundColor3 = state.disabled and colors.disabled 
+                             or (state.checked and colors.primary or colors.disabled)
+        }
+        
+        local thumbTween = tweenService:Create(toggleThumb, TweenInfo.new(0.2), thumbGoal)
+        local frameTween = tweenService:Create(toggleFrame, TweenInfo.new(0.2), frameGoal)
+        
+        thumbTween:Play()
+        frameTween:Play()
+        
+        if state.disabled then
+            container.Transparency = 0.5
+            toggleButton.Active = false
+        else
+            container.Transparency = 0
+            toggleButton.Active = true
+        end
+    end
+
+    -- Обработчики событий
+    toggleButton.MouseButton1Click:Connect(function()
+        if not state.disabled then
+            state.checked = not state.checked
+            updateToggle()
+            if options.onChange then
+                options.onChange(state.checked)
+            end
+        end
+    end)
+
+    toggleButton.MouseEnter:Connect(function()
+        if not state.disabled then
+            local hoverColor = state.checked and colors.primaryHover or colors.hoverLight
+            tweenService:Create(toggleFrame, TweenInfo.new(0.1), {BackgroundColor3 = hoverColor}):Play()
+        end
+    end)
+
+    toggleButton.MouseLeave:Connect(function()
+        updateToggle()
+    end)
+
+    -- Публичные методы
+    function container:SetChecked(value)
+        if state.checked ~= value then
+            state.checked = value
+            updateToggle()
+        end
+        return self
+    end
+
+    function container:GetChecked()
+        return state.checked
+    end
+
+    function container:SetDisabled(value)
+        if state.disabled ~= value then
+            state.disabled = value
+            updateToggle()
+        end
+        return self
+    end
+
+    function container:IsDisabled()
+        return state.disabled
+    end
+
+    function container:SetLabel(newLabel)
+        label.Text = newLabel
+        return self
+    end
+
+    function container:SetDescription(newDesc)
+        if description then
+            description.Text = newDesc
+        elseif newDesc ~= "" then
+            -- Создаем описание если его не было
+            label.Size = UDim2.new(1, 0, 0.6, 0)
+            
+            description = Instance.new("TextLabel")
+            description.Text = newDesc
+            description.Font = Enum.Font.SourceSans
+            description.TextSize = sizeSettings.descTextSize
+            description.TextColor3 = colors.text
+            description.TextTransparency = 0.3
+            description.TextXAlignment = Enum.TextXAlignment.Left
+            description.BackgroundTransparency = 1
+            description.Size = UDim2.new(1, 0, 0.4, 0)
+            description.Position = UDim2.new(0, 0, 0.6, 0)
+            description.Parent = textContainer
+        end
+        return self
+    end
+
+    -- Инициализация
+    updateToggle()
+
+    return container
+end
+
+return FluentUI
