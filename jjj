@@ -64,185 +64,41 @@ do
 
 
 
-local Players = game:GetService("Players")
-local PathfindingService = game:GetService("PathfindingService")
-local RunService = game:GetService("RunService")
-
-local localPlayer = Players.LocalPlayer
-local teleportPart = workspace.Lobby.Teleport1
-
--- -- Настройки UI (замените на ваш фреймворк: Rayfield, Kahlua и т.д.)
--- local Tabs = {
---     Main = {
---         AddDropdown = function() end,
---         AddToggle = function() end
---     }
--- }
-
--- Переменные состояния
-local selectedPlayerName = nil
-local isChasingEnabled = false
-local activeConnections = {}
-local currentHumanoid = nil
-
--- Pathfinding объект
-local path = PathfindingService:CreatePath({
-    AgentRadius = 2,
-    AgentHeight = 5,
-    AgentCanJump = true,
-    WaypointSpacing = 4
-})
-
--- Получение списка игроков (исключая себя)
-local function getPlayerNames()
-    local names = {}
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= localPlayer then
-            table.insert(names, player.Name)
-        end
-    end
-    return names
-end
-
--- Очистка всех активных подключений
-local function cleanup()
-    for _, connection in pairs(activeConnections) do
-        connection:Disconnect()
-    end
-    activeConnections = {}
-
-    if currentHumanoid then
-        currentHumanoid:MoveTo(currentHumanoid.Parent.PrimaryPart.Position)
-        currentHumanoid = nil
-    end
-end
-
--- Поиск игрока по имени
-local function findTargetPlayer()
-    if not selectedPlayerName then return nil end
-    return Players:FindFirstChild(selectedPlayerName)
-end
-
--- Расчет расстояния
-local function getDistance(a, b)
-    return (a.Position - b.Position).Magnitude
-end
-
--- Движение по пути
-local function followPath(destination)
-    cleanup()
-
-    if not localPlayer.Character then return end
-    local humanoid = localPlayer.Character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
-
-    currentHumanoid = humanoid
-    local rootPart = localPlayer.Character.PrimaryPart
-    if not rootPart then return end
-
-    path:ComputeAsync(rootPart.Position, destination.Position)
-
-    if path.Status == Enum.PathStatus.Success then
-        local waypoints = path:GetWaypoints()
-        
-        for _, waypoint in ipairs(waypoints) do
-            if not isChasingEnabled then break end
-            
-            humanoid:MoveTo(waypoint.Position)
-            
-            local reached = false
-            local connection
-            connection = humanoid.MoveToFinished:Connect(function(success)
-                reached = success
-                connection:Disconnect()
-            end)
-            table.insert(activeConnections, connection)
-
-            while isChasingEnabled and not reached and 
-                  (rootPart.Position - waypoint.Position).Magnitude > 3 do
-                RunService.Heartbeat:Wait()
-            end
-
-            if not isChasingEnabled then break end
-        end
-    else
-        humanoid:MoveTo(destination.Position)
-    end
-end
-
--- Основная логика преследования
+-- Обновлённая основная логика преследования с циклом и ускорением
 local function updateChasing()
-    if not isChasingEnabled then 
-        cleanup()
-        return 
-    end
+    if isChasingEnabled then
+        task.spawn(function()
+            while isChasingEnabled do
+                local targetPlayer = findTargetPlayer()
+                if not teleportPart or not localPlayer.Character or not localPlayer.Character.PrimaryPart then
+                    task.wait(0.1)
+                    continue
+                end
 
-    local targetPlayer = findTargetPlayer()
-    if not teleportPart then return end
+                local myRoot = localPlayer.Character.PrimaryPart
 
-    if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character.PrimaryPart then
-        followPath(teleportPart)
-        return
-    end
+                if targetPlayer and targetPlayer.Character and targetPlayer.Character.PrimaryPart then
+                    local targetPos = targetPlayer.Character.PrimaryPart
+                    local distanceToPlayer = getDistance(myRoot, targetPos)
+                    local distanceToTeleport = getDistance(myRoot, teleportPart)
 
-    local targetPos = targetPlayer.Character.PrimaryPart
-    local distanceToPlayer = getDistance(localPlayer.Character.PrimaryPart, targetPos)
-    local distanceToTeleport = getDistance(localPlayer.Character.PrimaryPart, teleportPart)
+                    if distanceToPlayer < distanceToTeleport then
+                        followPath(targetPos)
+                    else
+                        followPath(teleportPart)
+                    end
+                else
+                    followPath(teleportPart)
+                end
 
-    if distanceToPlayer < distanceToTeleport then
-        followPath(targetPos)
+                task.wait(0.2) -- чаще обновляем путь (меньше = быстрее реагирует)
+            end
+        end)
     else
-        followPath(teleportPart)
+        cleanup()
     end
 end
 
--- UI Elements
-local PlayerDropdown = Tabs.Main:AddDropdown("PlayerDropdown", {
-    Title = "Цель для преследования",
-    Values = getPlayerNames(),
-    Multi = false,
-    Default = 1
-})
-
-local ChaseToggle = Tabs.Main:AddToggle("ChaseToggle", {
-    Title = "Автопреследование",
-    Default = false
-})
-
--- Обработчики UI
-PlayerDropdown:OnChanged(function(selectedValue)
-    selectedPlayerName = selectedValue
-    if isChasingEnabled then
-        updateChasing()
-    end
-end)
-
-ChaseToggle:OnChanged(function(value)
-    isChasingEnabled = value
-    updateChasing()
-end)
-
--- Обновление списка игроков
-Players.PlayerAdded:Connect(function()
-    PlayerDropdown:SetValues(getPlayerNames())
-end)
-
-Players.PlayerRemoving:Connect(function(player)
-    if player.Name == selectedPlayerName then
-        selectedPlayerName = nil
-    end
-    PlayerDropdown:SetValues(getPlayerNames())
-end)
-
--- Автоостановка при смерти
-localPlayer.CharacterAdded:Connect(function(character)
-    character:WaitForChild("Humanoid").Died:Connect(function()
-        if isChasingEnabled then
-            isChasingEnabled = false
-            ChaseToggle:SetValue(false)
-        end
-    end)
-end)
 
 
     
