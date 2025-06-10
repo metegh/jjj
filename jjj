@@ -73,6 +73,14 @@ local teleportPart = workspace:WaitForChild("Lobby"):WaitForChild("Teleport1")
 
 local selectedTargetName = nil
 local autoMoveEnabled = false
+local path = PathfindingService:CreatePath({
+    AgentRadius = 2,
+    AgentHeight = 5,
+    AgentCanJump = true,
+    WaypointSpacing = 2
+})
+
+local activeConnections = {}
 
 -- Получить список имён игроков (без локального)
 local function getPlayerNames()
@@ -85,71 +93,78 @@ local function getPlayerNames()
     return names
 end
 
--- Обновление пути и движение
-local function followDynamic()
+-- Очистка коннекций
+local function cleanup()
+    for _, c in pairs(activeConnections) do
+        c:Disconnect()
+    end
+    activeConnections = {}
+end
+
+-- Следование по пути
+local function followPath(destination)
+    cleanup()
+
+    local character = localPlayer.Character
+    if not character then return end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not rootPart then return end
+
+    path:ComputeAsync(rootPart.Position, destination.Position)
+
+    if path.Status == Enum.PathStatus.Success then
+        local waypoints = path:GetWaypoints()
+        for _, waypoint in ipairs(waypoints) do
+            if not autoMoveEnabled then break end
+
+            humanoid:MoveTo(waypoint.Position)
+            local reached = false
+
+            local connection = humanoid.MoveToFinished:Connect(function(success)
+                reached = success
+            end)
+            table.insert(activeConnections, connection)
+
+            local startTime = tick()
+            while not reached and tick() - startTime < 1 and autoMoveEnabled do
+                RunService.Heartbeat:Wait()
+            end
+        end
+    else
+        humanoid:MoveTo(destination.Position)
+    end
+end
+
+-- Цикл слежения
+local function autoMoveLoop()
     task.spawn(function()
         while autoMoveEnabled do
             local character = localPlayer.Character
             local root = character and character:FindFirstChild("HumanoidRootPart")
-            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-
             local targetPlayer = Players:FindFirstChild(selectedTargetName)
             local targetChar = targetPlayer and targetPlayer.Character
             local targetRoot = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
 
-            if root and humanoid and teleportPart then
-                local targetPos = nil
+            if root and targetRoot and teleportPart then
+                local distToTarget = (root.Position - targetRoot.Position).Magnitude
+                local distToTeleport = (root.Position - teleportPart.Position).Magnitude
 
-                if targetRoot then
-                    local distToTarget = (root.Position - targetRoot.Position).Magnitude
-                    local distToTeleport = (root.Position - teleportPart.Position).Magnitude
-
-                    if distToTarget < distToTeleport then
-                        targetPos = targetRoot.Position
-                    else
-                        targetPos = teleportPart.Position
-                    end
+                if distToTarget < distToTeleport then
+                    followPath(targetRoot)
                 else
-                    targetPos = teleportPart.Position
-                end
-
-                local path = PathfindingService:CreatePath({
-                    AgentRadius = 2,
-                    AgentHeight = 5,
-                    AgentCanJump = true,
-                    WaypointSpacing = 2
-                })
-
-                path:ComputeAsync(root.Position, targetPos)
-
-                if path.Status == Enum.PathStatus.Success then
-                    local waypoints = path:GetWaypoints()
-                    for _, waypoint in ipairs(waypoints) do
-                        if not autoMoveEnabled then break end
-                        humanoid:MoveTo(waypoint.Position)
-
-                        local reached = false
-                        local conn = humanoid.MoveToFinished:Connect(function(success)
-                            reached = success
-                        end)
-
-                        -- Ждём либо достижения, либо 0.3 сек — потом пересчёт пути
-                        local t = tick()
-                        while tick() - t < 0.3 and not reached and autoMoveEnabled do
-                            RunService.Heartbeat:Wait()
-                        end
-                        conn:Disconnect()
-
-                        if not autoMoveEnabled then break end
-                    end
+                    followPath(teleportPart)
                 end
             end
-            RunService.Heartbeat:Wait()
+
+            task.wait(0.25)
         end
+        cleanup()
     end)
 end
 
--- UI (Fluent или любая библиотека GUI)
+-- UI элементы (Fluent)
 local Dropdown = Tabs.Main:AddDropdown("TargetPlayerDropdown", {
     Title = "Игрок для слежения",
     Values = getPlayerNames(),
@@ -158,11 +173,11 @@ local Dropdown = Tabs.Main:AddDropdown("TargetPlayerDropdown", {
 })
 
 local Toggle = Tabs.Main:AddToggle("AutoMoveToggle", {
-    Title = "Постоянное авто-слежение",
+    Title = "Включить авто-слежение",
     Default = false,
 })
 
--- Обновление списка игроков
+-- Обновление дропдауна при изменении игроков
 local function refreshDropdown()
     Dropdown:SetValues(getPlayerNames())
 end
@@ -170,20 +185,22 @@ end
 Players.PlayerAdded:Connect(refreshDropdown)
 Players.PlayerRemoving:Connect(refreshDropdown)
 
--- Обработка выбора цели
+-- Выбор цели
 Dropdown:OnChanged(function(name)
     selectedTargetName = name
 end)
 
--- Переключение включения слежения
+-- Активация перемещения
 Toggle:OnChanged(function(state)
     autoMoveEnabled = state
     if state and selectedTargetName then
-        followDynamic()
+        autoMoveLoop()
+    else
+        cleanup()
     end
 end)
 
--- Инициализация
+-- Установка значения по умолчанию
 Dropdown:SetValue(getPlayerNames()[1] or "")
 Toggle:SetValue(false)
 
