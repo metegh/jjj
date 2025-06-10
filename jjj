@@ -188,8 +188,6 @@ Dropdown:SetValue(getPlayerNames()[1] or "")
 Toggle:SetValue(false)
 
 
--------------------------------------
-
 
     
     local Slider = Tabs.Main:AddSlider("Slider", {
