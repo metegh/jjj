@@ -82,7 +82,7 @@ local path = PathfindingService:CreatePath({
 
 local activeConnections = {}
 
--- Получение списка игроков кроме локального
+-- Получить список имён игроков (без локального)
 local function getPlayerNames()
     local names = {}
     for _, player in ipairs(Players:GetPlayers()) do
@@ -93,7 +93,7 @@ local function getPlayerNames()
     return names
 end
 
--- Очистка соединений
+-- Очистка коннекций
 local function cleanup()
     for _, c in pairs(activeConnections) do
         c:Disconnect()
@@ -101,66 +101,70 @@ local function cleanup()
     activeConnections = {}
 end
 
--- Быстрый цикл с пересчётом пути
+-- Следование по пути
+local function followPath(destination)
+    cleanup()
+
+    local character = localPlayer.Character
+    if not character then return end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not rootPart then return end
+
+    path:ComputeAsync(rootPart.Position, destination.Position)
+
+    if path.Status == Enum.PathStatus.Success then
+        local waypoints = path:GetWaypoints()
+        for _, waypoint in ipairs(waypoints) do
+            if not autoMoveEnabled then break end
+
+            humanoid:MoveTo(waypoint.Position)
+            local reached = false
+
+            local connection = humanoid.MoveToFinished:Connect(function(success)
+                reached = success
+            end)
+            table.insert(activeConnections, connection)
+
+            local startTime = tick()
+            while not reached and tick() - startTime < 1 and autoMoveEnabled do
+                RunService.Heartbeat:Wait()
+            end
+        end
+    else
+        humanoid:MoveTo(destination.Position)
+    end
+end
+
+-- Цикл слежения
 local function autoMoveLoop()
     task.spawn(function()
-        localPlayer.CharacterAdded:Wait()
-
         while autoMoveEnabled do
             local character = localPlayer.Character
-            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
             local root = character and character:FindFirstChild("HumanoidRootPart")
             local targetPlayer = Players:FindFirstChild(selectedTargetName)
             local targetChar = targetPlayer and targetPlayer.Character
             local targetRoot = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
 
-            if humanoid and root and teleportPart then
-                local destination = teleportPart
-                if targetRoot then
-                    local distToTarget = (root.Position - targetRoot.Position).Magnitude
-                    local distToTeleport = (root.Position - teleportPart.Position).Magnitude
-                    if distToTarget < distToTeleport then
-                        destination = targetRoot
-                    end
-                end
+            if root and targetRoot and teleportPart then
+                local distToTarget = (root.Position - targetRoot.Position).Magnitude
+                local distToTeleport = (root.Position - teleportPart.Position).Magnitude
 
-                -- Пересчёт пути
-                path:ComputeAsync(root.Position, destination.Position)
-
-                if path.Status == Enum.PathStatus.Success then
-                    local waypoints = path:GetWaypoints()
-                    for _, waypoint in ipairs(waypoints) do
-                        if not autoMoveEnabled then break end
-
-                        humanoid:MoveTo(waypoint.Position)
-
-                        local reached = false
-                        local conn = humanoid.MoveToFinished:Connect(function(success)
-                            reached = success
-                        end)
-                        table.insert(activeConnections, conn)
-
-                        local startTime = tick()
-                        while tick() - startTime < 0.15 and not reached and autoMoveEnabled do
-                            RunService.Heartbeat:Wait()
-                        end
-
-                        conn:Disconnect()
-                        break -- Дальше не идём, пусть путь обновляется на следующем цикле
-                    end
+                if distToTarget < distToTeleport then
+                    followPath(targetRoot)
                 else
-                    humanoid:MoveTo(destination.Position)
+                    followPath(teleportPart)
                 end
             end
 
-            RunService.Heartbeat:Wait()
+            task.wait(0.25)
         end
-
         cleanup()
     end)
 end
 
--- UI Элементы (на Fluent)
+-- UI элементы (Fluent)
 local Dropdown = Tabs.Main:AddDropdown("TargetPlayerDropdown", {
     Title = "Игрок для слежения",
     Values = getPlayerNames(),
@@ -173,7 +177,7 @@ local Toggle = Tabs.Main:AddToggle("AutoMoveToggle", {
     Default = false,
 })
 
--- Обновление списка игроков
+-- Обновление дропдауна при изменении игроков
 local function refreshDropdown()
     Dropdown:SetValues(getPlayerNames())
 end
@@ -181,10 +185,12 @@ end
 Players.PlayerAdded:Connect(refreshDropdown)
 Players.PlayerRemoving:Connect(refreshDropdown)
 
+-- Выбор цели
 Dropdown:OnChanged(function(name)
     selectedTargetName = name
 end)
 
+-- Активация перемещения
 Toggle:OnChanged(function(state)
     autoMoveEnabled = state
     if state and selectedTargetName then
@@ -194,7 +200,7 @@ Toggle:OnChanged(function(state)
     end
 end)
 
--- Установка начальных значений
+-- Установка значения по умолчанию
 Dropdown:SetValue(getPlayerNames()[1] or "")
 Toggle:SetValue(false)
 
