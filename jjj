@@ -64,38 +64,42 @@ do
 
 
 
--- Обновлённая основная логика преследования с циклом и ускорением
-local function updateChasing()
-    if isChasingEnabled then
-        task.spawn(function()
-            while isChasingEnabled do
-                local targetPlayer = findTargetPlayer()
-                if not teleportPart or not localPlayer.Character or not localPlayer.Character.PrimaryPart then
-                    task.wait(0.1)
-                    continue
-                end
+local function followPath(destination)
+    cleanup()
 
-                local myRoot = localPlayer.Character.PrimaryPart
+    if not localPlayer.Character then return end
+    local humanoid = localPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
 
-                if targetPlayer and targetPlayer.Character and targetPlayer.Character.PrimaryPart then
-                    local targetPos = targetPlayer.Character.PrimaryPart
-                    local distanceToPlayer = getDistance(myRoot, targetPos)
-                    local distanceToTeleport = getDistance(myRoot, teleportPart)
+    currentHumanoid = humanoid
+    local rootPart = localPlayer.Character.PrimaryPart
+    if not rootPart then return end
 
-                    if distanceToPlayer < distanceToTeleport then
-                        followPath(targetPos)
-                    else
-                        followPath(teleportPart)
-                    end
-                else
-                    followPath(teleportPart)
-                end
+    path:ComputeAsync(rootPart.Position, destination.Position)
 
-                task.wait(0.2) -- чаще обновляем путь (меньше = быстрее реагирует)
+    if path.Status == Enum.PathStatus.Success then
+        local waypoints = path:GetWaypoints()
+        
+        for _, waypoint in ipairs(waypoints) do
+            if not isChasingEnabled then break end
+
+            humanoid:MoveTo(waypoint.Position)
+            local reached = false
+            local connection
+            connection = humanoid.MoveToFinished:Connect(function(success)
+                reached = success
+            end)
+            table.insert(activeConnections, connection)
+
+            -- Быстрое приближение, сокращаем таймер
+            local timeout = 1
+            local startTime = tick()
+            while isChasingEnabled and not reached and (rootPart.Position - waypoint.Position).Magnitude > 2 and (tick() - startTime) < timeout do
+                RunService.Heartbeat:Wait()
             end
-        end)
+        end
     else
-        cleanup()
+        humanoid:MoveTo(destination.Position)
     end
 end
 
