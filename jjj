@@ -64,165 +64,51 @@ do
 
 
 
-local Players = game:GetService("Players")
-local PathfindingService = game:GetService("PathfindingService")
-local RunService = game:GetService("RunService")
-
-local localPlayer = Players.LocalPlayer
-local teleportPart = workspace.Lobby:FindFirstChild("Teleport1")
-
-local selectedPlayerName = nil
-local isChasingEnabled = false
-local activeConnections = {}
-local currentHumanoid = nil
-
-local path = PathfindingService:CreatePath({
-    AgentRadius = 2,
-    AgentHeight = 5,
-    AgentCanJump = true,
-    WaypointSpacing = 2
-})
-
--- Получение списка имён игроков
-local function getPlayerNames()
-    local names = {}
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= localPlayer then
-            table.insert(names, player.Name)
-        end
-    end
-    return names
-end
-
--- Очистка старых коннекций
-local function cleanup()
-    for _, connection in pairs(activeConnections) do
-        connection:Disconnect()
-    end
-    activeConnections = {}
-    currentHumanoid = nil
-end
-
-local function findTargetPlayer()
-    return Players:FindFirstChild(selectedPlayerName)
-end
-
-local function getDistance(a, b)
-    return (a.Position - b.Position).Magnitude
-end
-
--- Следование по пути
-local function followPath(destination)
-    cleanup()
-
-    if not localPlayer.Character then return end
-    local humanoid = localPlayer.Character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
-    local rootPart = localPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not rootPart then return end
-
-    currentHumanoid = humanoid
-    path:ComputeAsync(rootPart.Position, destination.Position)
-
-    if path.Status == Enum.PathStatus.Success then
-        local waypoints = path:GetWaypoints()
-
-        for _, waypoint in ipairs(waypoints) do
-            if not isChasingEnabled then break end
-
-            humanoid:MoveTo(waypoint.Position)
-            local reached = false
-            local connection = humanoid.MoveToFinished:Connect(function(success)
-                reached = success
-            end)
-            table.insert(activeConnections, connection)
-
-            local timeout = 1
-            local startTime = tick()
-            while isChasingEnabled and not reached and (rootPart.Position - waypoint.Position).Magnitude > 2 and (tick() - startTime) < timeout do
-                RunService.Heartbeat:Wait()
-            end
-        end
-    else
-        humanoid:MoveTo(destination.Position)
-    end
-end
-
--- Цикл слежки
-local function updateChasingLoop()
-    task.spawn(function()
-        while isChasingEnabled do
-            local targetPlayer = findTargetPlayer()
-            if localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                local root = localPlayer.Character.HumanoidRootPart
-
-                if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                    local target = targetPlayer.Character.HumanoidRootPart
-                    local distanceToPlayer = getDistance(root, target)
-                    local distanceToTeleport = getDistance(root, teleportPart)
-
-                    if distanceToPlayer < distanceToTeleport then
-                        followPath(target)
-                    else
-                        followPath(teleportPart)
-                    end
-                else
-                    followPath(teleportPart)
-                end
-            end
-            task.wait(0.2)
-        end
-        cleanup()
-    end)
-end
-
--- UI (на базе Fluent)
-local PlayerDropdown = Tabs.Main:AddDropdown("TargetDropdown", {
-    Title = "Цель для преследования",
-    Values = getPlayerNames(),
-    Multi = false,
-    Default = 1
-})
-
-local ChaseToggle = Tabs.Main:AddToggle("AutoChaseToggle", {
-    Title = "Автоследование за игроком",
+local Toggle = Tabs.Main:AddToggle("MyToggle", {
+    Title = "Auto-Help with 'Pick Up People' task for ImtubGAME",
     Default = false
 })
 
--- Обновление списка игроков
-Players.PlayerAdded:Connect(function()
-    PlayerDropdown:SetValues(getPlayerNames())
-end)
-Players.PlayerRemoving:Connect(function(player)
-    if player.Name == selectedPlayerName then
-        selectedPlayerName = nil
+Toggle:OnChanged(function()
+    local enabled = Options.MyToggle.Value
+    _G.cloudhelper = enabled
+    _G.PlayerToHelpMastery = "ROB_AWTOR"
+    _G.Premium = true -- Убедитесь, что премиум активен, если требуется
+
+    if _G.cloudhelper and _G.Premium then
+        local targetPlayer = nil
+        for _, player in pairs(game.Players:GetPlayers()) do
+            if string.sub(player.Name:lower(), 1, #_G.PlayerToHelpMastery) == _G.PlayerToHelpMastery:lower() then
+                targetPlayer = player
+                break
+            end
+        end
+
+        if targetPlayer then
+            task.spawn(function()
+                while _G.cloudhelper do
+                    task.wait()
+                    local cloud = workspace:FindFirstChild(targetPlayer.Name .. "_Cloud")
+                    if cloud then
+                        if not game.Players.LocalPlayer.Character.Humanoid.Sit then
+                            repeat
+                                task.wait()
+                                game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = cloud.CFrame
+                            until game.Players.LocalPlayer.Character.Humanoid.Sit or not _G.cloudhelper
+                        else
+                            repeat
+                                task.wait()
+                                game.Players.LocalPlayer.Character.Humanoid.Sit = false
+                            until not game.Players.LocalPlayer.Character.Humanoid.Sit or not _G.cloudhelper
+                        end
+                    end
+                end
+            end)
+        end
     end
-    PlayerDropdown:SetValues(getPlayerNames())
 end)
 
--- Перезапуск при выборе игрока
-PlayerDropdown:OnChanged(function(value)
-    selectedPlayerName = value
-end)
-
--- Перезапуск цикла при включении
-ChaseToggle:OnChanged(function(enabled)
-    isChasingEnabled = enabled
-    if enabled then
-        updateChasingLoop()
-    else
-        cleanup()
-    end
-end)
-
--- Безопасность: остановка при смерти
-localPlayer.CharacterAdded:Connect(function(character)
-    character:WaitForChild("Humanoid").Died:Connect(function()
-        isChasingEnabled = false
-        ChaseToggle:SetValue(false)
-    end)
-end)
-
+Options.MyToggle:SetValue(false)
 
 
     
