@@ -71,13 +71,13 @@ local RunService = game:GetService("RunService")
 local localPlayer = Players.LocalPlayer
 local teleportPart = workspace.Lobby.Teleport1
 
--- Настройки UI (замените на ваш фреймворк: Rayfield, Kahlua и т.д.)
-local Tabs = {
-    Main = {
-        AddDropdown = function() end,
-        AddToggle = function() end
-    }
-}
+-- -- Настройки UI (замените на ваш фреймворк: Rayfield, Kahlua и т.д.)
+-- local Tabs = {
+--     Main = {
+--         AddDropdown = function() end,
+--         AddToggle = function() end
+--     }
+-- }
 
 -- Переменные состояния
 local selectedPlayerName = nil
