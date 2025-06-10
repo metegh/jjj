@@ -64,51 +64,146 @@ do
 
 
 
-local Toggle = Tabs.Main:AddToggle("MyToggle", {
-    Title = "Auto-Help with 'Pick Up People' task for ImtubGAME",
-    Default = false
+local Players = game:GetService("Players")
+local PathfindingService = game:GetService("PathfindingService")
+local RunService = game:GetService("RunService")
+
+local localPlayer = Players.LocalPlayer
+local teleportPart = workspace:WaitForChild("Lobby"):WaitForChild("Teleport1")
+
+local selectedTargetName = nil
+local autoMoveEnabled = false
+local path = PathfindingService:CreatePath({
+    AgentRadius = 2,
+    AgentHeight = 5,
+    AgentCanJump = true,
+    WaypointSpacing = 2
 })
 
-Toggle:OnChanged(function()
-    local enabled = Options.MyToggle.Value
-    _G.cloudhelper = enabled
-    _G.PlayerToHelpMastery = "ROB_AWTOR"
-    _G.Premium = true -- Убедитесь, что премиум активен, если требуется
+local activeConnections = {}
 
-    if _G.cloudhelper and _G.Premium then
-        local targetPlayer = nil
-        for _, player in pairs(game.Players:GetPlayers()) do
-            if string.sub(player.Name:lower(), 1, #_G.PlayerToHelpMastery) == _G.PlayerToHelpMastery:lower() then
-                targetPlayer = player
-                break
+-- Получить список имён игроков (без локального)
+local function getPlayerNames()
+    local names = {}
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer then
+            table.insert(names, player.Name)
+        end
+    end
+    return names
+end
+
+-- Очистка коннекций
+local function cleanup()
+    for _, c in pairs(activeConnections) do
+        c:Disconnect()
+    end
+    activeConnections = {}
+end
+
+-- Следование по пути
+local function followPath(destination)
+    cleanup()
+
+    local character = localPlayer.Character
+    if not character then return end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not rootPart then return end
+
+    path:ComputeAsync(rootPart.Position, destination.Position)
+
+    if path.Status == Enum.PathStatus.Success then
+        local waypoints = path:GetWaypoints()
+        for _, waypoint in ipairs(waypoints) do
+            if not autoMoveEnabled then break end
+
+            humanoid:MoveTo(waypoint.Position)
+            local reached = false
+
+            local connection = humanoid.MoveToFinished:Connect(function(success)
+                reached = success
+            end)
+            table.insert(activeConnections, connection)
+
+            local startTime = tick()
+            while not reached and tick() - startTime < 1 and autoMoveEnabled do
+                RunService.Heartbeat:Wait()
             end
         end
+    else
+        humanoid:MoveTo(destination.Position)
+    end
+end
 
-        if targetPlayer then
-            task.spawn(function()
-                while _G.cloudhelper do
-                    task.wait()
-                    local cloud = workspace:FindFirstChild(targetPlayer.Name .. "_Cloud")
-                    if cloud then
-                        if not game.Players.LocalPlayer.Character.Humanoid.Sit then
-                            repeat
-                                task.wait()
-                                game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = cloud.CFrame
-                            until game.Players.LocalPlayer.Character.Humanoid.Sit or not _G.cloudhelper
-                        else
-                            repeat
-                                task.wait()
-                                game.Players.LocalPlayer.Character.Humanoid.Sit = false
-                            until not game.Players.LocalPlayer.Character.Humanoid.Sit or not _G.cloudhelper
-                        end
-                    end
+-- Цикл слежения
+local function autoMoveLoop()
+    task.spawn(function()
+        while autoMoveEnabled do
+            local character = localPlayer.Character
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+            local targetPlayer = Players:FindFirstChild(selectedTargetName)
+            local targetChar = targetPlayer and targetPlayer.Character
+            local targetRoot = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+
+            if root and targetRoot and teleportPart then
+                local distToTarget = (root.Position - targetRoot.Position).Magnitude
+                local distToTeleport = (root.Position - teleportPart.Position).Magnitude
+
+                if distToTarget < distToTeleport then
+                    followPath(targetRoot)
+                else
+                    followPath(teleportPart)
                 end
-            end)
+            end
+
+            task.wait(0.25)
         end
+        cleanup()
+    end)
+end
+
+-- UI элементы (Fluent)
+local Dropdown = Tabs.Main:AddDropdown("TargetPlayerDropdown", {
+    Title = "Игрок для слежения",
+    Values = getPlayerNames(),
+    Multi = false,
+    Default = 1,
+})
+
+local Toggle = Tabs.Main:AddToggle("AutoMoveToggle", {
+    Title = "Включить авто-слежение",
+    Default = false,
+})
+
+-- Обновление дропдауна при изменении игроков
+local function refreshDropdown()
+    Dropdown:SetValues(getPlayerNames())
+end
+
+Players.PlayerAdded:Connect(refreshDropdown)
+Players.PlayerRemoving:Connect(refreshDropdown)
+
+-- Выбор цели
+Dropdown:OnChanged(function(name)
+    selectedTargetName = name
+end)
+
+-- Активация перемещения
+Toggle:OnChanged(function(state)
+    autoMoveEnabled = state
+    if state and selectedTargetName then
+        autoMoveLoop()
+    else
+        cleanup()
     end
 end)
 
-Options.MyToggle:SetValue(false)
+-- Установка значения по умолчанию
+Dropdown:SetValue(getPlayerNames()[1] or "")
+Toggle:SetValue(false)
+
 
 
     
